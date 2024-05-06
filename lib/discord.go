@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -29,17 +30,13 @@ var endpointCache = make(map[string]*Cache)
 var disableRestLimitDetection = false
 
 var cacheEndpoints = map[string]time.Duration{
-	"/api/users/@me":            10 * time.Minute,
-	"/api/v9/users/@me":         10 * time.Minute,
-	"/api/v10/users/@me":        10 * time.Minute,
-	"/api/gateway":              60 * time.Minute,
-	"/api/v9/gateway":           60 * time.Minute,
-	"/api/v10/gateway":          60 * time.Minute,
-	"/api/gateway/bot":          30 * time.Minute,
-	"/api/v9/gateway/bot":       30 * time.Minute,
-	"/api/v10/gateway/bot":      30 * time.Minute,
-	"/api/v9/applications/@me":  5 * time.Minute,
-	"/api/v10/applications/@me": 5 * time.Minute,
+	"/api/users/@me":           10 * time.Minute,
+	"/api/v*/users/@me":        10 * time.Minute,
+	"/api/gateway":             60 * time.Minute,
+	"/api/v*/gateway":          60 * time.Minute,
+	"/api/gateway/*":           30 * time.Minute,
+	"/api/v*/gateway/*":        30 * time.Minute,
+	"/api/v*/applications/@me": 5 * time.Minute,
 }
 
 var wsProxy string
@@ -61,6 +58,20 @@ func init() {
 				os.Setenv("PORT", argSplit[1])
 			case "ratelimit-over-408":
 				ratelimitOver408 = true
+			case "cache-endpoints":
+				if argSplit[1] == "" || argSplit[1] == "false" {
+					cacheEndpoints = make(map[string]time.Duration)
+				} else {
+					var endpoints map[string]time.Duration
+
+					err := json.Unmarshal([]byte(argSplit[1]), &endpoints)
+
+					if err != nil {
+						logrus.Fatal("Failed to parse cache-endpoints: ", err)
+					}
+
+					cacheEndpoints = endpoints
+				}
 			default:
 				logrus.Fatal("Unknown argument: ", argSplit[0])
 			}
@@ -276,34 +287,37 @@ func doDiscordReq(ctx context.Context, path string, method string, body io.ReadC
 	identifierStr, ok := identifier.(string)
 
 	if ok {
-		// Check endpoint cache
-		if endpointCache[identifierStr] != nil {
-			cacheEntry := endpointCache[identifierStr].Get(path)
+		cache, ok := endpointCache[identifierStr]
 
-			if cacheEntry != nil {
-				// Send cached response
-				logger.WithFields(logrus.Fields{
-					"method": method,
-					"path":   path,
-					"status": "200 (cached)",
-				}).Debug("Discord request")
-
-				headers := cacheEntry.Headers.Clone()
-				headers.Set("X-Cached", "true")
-
-				// Set rl headers so bot won't be perpetually stuck
-				headers.Set("X-RateLimit-Limit", "5")
-				headers.Set("X-RateLimit-Remaining", "5")
-				headers.Set("X-RateLimit-Bucket", "cache")
-
-				return &http.Response{
-					StatusCode: 200,
-					Body:       io.NopCloser(bytes.NewBuffer(cacheEntry.Data)),
-					Header:     headers,
-				}, nil
-			}
-		} else {
+		if !ok {
 			endpointCache[identifierStr] = NewCache()
+			cache = endpointCache[identifierStr]
+		}
+
+		// Check endpoint cache
+		cacheEntry := cache.Get(path)
+
+		if cacheEntry != nil {
+			// Send cached response
+			logger.WithFields(logrus.Fields{
+				"method": method,
+				"path":   path,
+				"status": "200 (cached)",
+			}).Debug("Discord request")
+
+			headers := cacheEntry.Headers.Clone()
+			headers.Set("X-Cached", "true")
+
+			// Set rl headers so bot won't be perpetually stuck
+			headers.Set("X-RateLimit-Limit", "5")
+			headers.Set("X-RateLimit-Remaining", "5")
+			headers.Set("X-RateLimit-Bucket", "cache")
+
+			return &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewBuffer(cacheEntry.Data)),
+				Header:     headers,
+			}, nil
 		}
 	}
 
@@ -332,7 +346,17 @@ func doDiscordReq(ctx context.Context, path string, method string, body io.ReadC
 	}
 
 	if wsProxy != "" {
-		if path == "/api/gateway" || path == "/api/v9/gateway" || path == "/api/gateway/bot" || path == "/api/v10/gateway/bot" {
+		var isGwProxyUrl bool
+
+		if path == "/api/gateway" || path == "/api/gateway/bot" {
+			isGwProxyUrl = true
+		} else if ok, _ := filepath.Match("/api/v*/gateway/bot", path); ok {
+			isGwProxyUrl = true
+		} else if ok, _ := filepath.Match("/api/v*/gateway", path); ok {
+			isGwProxyUrl = true
+		}
+
+		if isGwProxyUrl {
 			var data map[string]any
 
 			err := json.NewDecoder(discordResp.Body).Decode(&data)
@@ -353,13 +377,22 @@ func doDiscordReq(ctx context.Context, path string, method string, body io.ReadC
 		}
 	}
 
-	if expiry, ok := cacheEndpoints[path]; ok {
+	var expiry *time.Duration
+
+	for endpoint, exp := range cacheEndpoints {
+		if ok, _ := filepath.Match(endpoint, path); ok {
+			expiry = &exp
+			break
+		}
+	}
+
+	if expiry != nil {
 		if discordResp.StatusCode == 200 {
 			body, _ := io.ReadAll(discordResp.Body)
 			endpointCache[identifierStr].Set(path, &CacheEntry{
 				Data:      body,
 				CreatedAt: time.Now(),
-				ExpiresIn: &expiry,
+				ExpiresIn: expiry,
 				Headers:   discordResp.Header,
 			})
 
