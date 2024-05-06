@@ -29,6 +29,7 @@ var endpointCache = make(map[string]*Cache)
 
 var disableRestLimitDetection = false
 
+// List of endpoints to cache and their expiry times
 var cacheEndpoints = map[string]time.Duration{
 	"/api/users/@me":           10 * time.Minute,
 	"/api/v*/users/@me":        10 * time.Minute,
@@ -38,6 +39,13 @@ var cacheEndpoints = map[string]time.Duration{
 	"/api/v*/gateway/*":        30 * time.Minute,
 	"/api/v*/applications/@me": 5 * time.Minute,
 }
+
+// In some cases, we may want to transparently rewrite endpoints
+//
+// For example, when using a gateway proxy, the proxy may provide its own /api/gateway/bot endpoint
+//
+// This allows transparently rewriting the endpoint to the proxy's
+var endpointRewrite = map[string]string{}
 
 var wsProxy string
 var ratelimitOver408 bool
@@ -71,6 +79,17 @@ func init() {
 					}
 
 					cacheEndpoints = endpoints
+				}
+			case "endpoint-rewrite":
+				for _, rewrite := range strings.Split(argSplit[1], ",") {
+					// split by '->'
+					rewriteSplit := strings.Split(rewrite, "->")
+
+					if len(rewriteSplit) != 2 {
+						logrus.Fatal("Invalid endpoint rewrite: ", rewrite)
+					}
+
+					endpointRewrite[rewriteSplit[0]] = rewriteSplit[1]
 				}
 			default:
 				logrus.Fatal("Unknown argument: ", argSplit[0])
@@ -320,7 +339,17 @@ func doDiscordReq(ctx context.Context, path string, method string, body io.ReadC
 		}
 	}
 
-	discordReq, err := http.NewRequestWithContext(ctx, method, "https://discord.com"+path+"?"+query, body)
+	// Check for a rewrite
+	var urlBase = "https://discord.com"
+	for rw := range endpointRewrite {
+		if ok, _ := filepath.Match(rw, path); ok {
+			urlBase = endpointRewrite[rw]
+			break
+
+		}
+	}
+
+	discordReq, err := http.NewRequestWithContext(ctx, method, urlBase+path+"?"+query, body)
 	if err != nil {
 		return nil, err
 	}
