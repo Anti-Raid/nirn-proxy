@@ -67,7 +67,11 @@ func init() {
 			case "ratelimit-over-408":
 				ratelimitOver408 = true
 			case "cache-endpoints":
-				if argSplit[1] == "" || argSplit[1] == "false" {
+				if argSplit[1] == "" {
+					continue
+				}
+
+				if argSplit[1] == "false" {
 					cacheEndpoints = make(map[string]time.Duration)
 				} else {
 					var endpoints map[string]time.Duration
@@ -373,7 +377,7 @@ func doDiscordReq(ctx context.Context, path string, method string, body io.ReadC
 		RequestHistogram.With(map[string]string{"route": route, "status": status, "method": method, "clientId": identifier.(string)}).Observe(elapsed)
 	}
 
-	if wsProxy != "" {
+	if wsProxy != "" && discordResp.StatusCode == 200 {
 		var isGwProxyUrl bool
 
 		if path == "/api/gateway" || path == "/api/gateway/bot" {
@@ -414,19 +418,17 @@ func doDiscordReq(ctx context.Context, path string, method string, body io.ReadC
 		}
 	}
 
-	if expiry != nil {
-		if discordResp.StatusCode == 200 {
-			body, _ := io.ReadAll(discordResp.Body)
-			endpointCache[identifierStr].Set(path, &CacheEntry{
-				Data:      body,
-				CreatedAt: time.Now(),
-				ExpiresIn: expiry,
-				Headers:   discordResp.Header,
-			})
+	if expiry != nil && discordResp.StatusCode == 200 {
+		body, _ := io.ReadAll(discordResp.Body)
+		endpointCache[identifierStr].Set(path, &CacheEntry{
+			Data:      body,
+			CreatedAt: time.Now(),
+			ExpiresIn: expiry,
+			Headers:   discordResp.Header,
+		})
 
-			// Put body back into response
-			discordResp.Body = io.NopCloser(bytes.NewBuffer(body))
-		}
+		// Put body back into response
+		discordResp.Body = io.NopCloser(bytes.NewBuffer(body))
 	}
 
 	return discordResp, err
