@@ -297,7 +297,7 @@ func GetBotUser(token string) (*BotUserResponse, error) {
 func doDiscordReq(ctx context.Context, path string, method string, body io.ReadCloser, header http.Header, query string) (*http.Response, error) {
 	identifier := ctx.Value("identifier")
 	if identifier == nil {
-		logger.Error("No identifier in context")
+		identifier = "internal"
 	}
 
 	logger.Info(method, " ", path+"?"+query)
