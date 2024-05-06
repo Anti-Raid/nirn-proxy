@@ -282,7 +282,7 @@ func doDiscordReq(ctx context.Context, path string, method string, body io.ReadC
 		identifier = "Internal"
 	}
 
-	logger.Info(method, path+"?"+query)
+	logger.Info(method, " ", path+"?"+query)
 
 	identifierStr, ok := identifier.(string)
 
