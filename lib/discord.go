@@ -83,7 +83,7 @@ func init() {
 			case "endpoint-rewrite":
 				for _, rewrite := range strings.Split(argSplit[1], ",") {
 					// split by '->'
-					rewriteSplit := strings.Split(rewrite, "->")
+					rewriteSplit := strings.Split(rewrite, "@")
 
 					if len(rewriteSplit) != 2 {
 						logrus.Fatal("Invalid endpoint rewrite: ", rewrite)
