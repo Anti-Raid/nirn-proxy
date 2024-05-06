@@ -278,8 +278,7 @@ func GetBotUser(token string) (*BotUserResponse, error) {
 func doDiscordReq(ctx context.Context, path string, method string, body io.ReadCloser, header http.Header, query string) (*http.Response, error) {
 	identifier := ctx.Value("identifier")
 	if identifier == nil {
-		// Queues always have an identifier, if there's none in the context, we called the method from outside a queue
-		identifier = "Internal"
+		logger.Error("No identifier in context")
 	}
 
 	logger.Info(method, " ", path+"?"+query)
