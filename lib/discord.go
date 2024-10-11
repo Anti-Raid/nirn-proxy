@@ -375,12 +375,10 @@ func doDiscordReq(ctx context.Context, path string, method string, body io.ReadC
 		}
 
 		RequestHistogram.With(map[string]string{"route": route, "status": status, "method": method, "clientId": identifier.(string)}).Observe(elapsed)
-	} else if err != nil {
+	} else {
 		route := GetMetricsPath(path)
 		RequestHistogram.With(map[string]string{"route": route, "status": err.Error(), "method": method, "clientId": identifier.(string)}).Observe(0)
 		return nil, err
-	} else if discordResp == nil {
-		return nil, errors.New("response is nil")
 	}
 
 	if wsProxy != "" && discordResp.StatusCode == 200 {
