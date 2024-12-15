@@ -49,7 +49,7 @@ var endpointRewrite = map[string]string{}
 
 var wsProxy string
 var ratelimitOver408 bool
-var tokenMap = map[string]string{}
+var TokenMap = map[string]string{}
 
 func init() {
 	if len(os.Args) > 1 {
@@ -114,7 +114,7 @@ func init() {
 					logrus.Fatal("Failed to parse token map file: ", err)
 				}
 
-				tokenMap = tmap
+				TokenMap = tmap
 			default:
 				logrus.Fatal("Unknown argument: ", argSplit[0])
 			}
@@ -319,11 +319,11 @@ func GetBotUser(token string) (*BotUserResponse, error) {
 }
 
 func doDiscordReq(ctx context.Context, path string, method string, body io.ReadCloser, header http.Header, query string) (*http.Response, error) {
-	if len(tokenMap) > 0 {
+	if len(TokenMap) > 0 {
 		if header.Get("Authorization") != "" {
 			token := header.Get("Authorization")
-			if tokenMap[token] != "" {
-				header.Set("Authorization", tokenMap[token])
+			if TokenMap[token] != "" {
+				header.Set("Authorization", TokenMap[token])
 			}
 		}
 	}

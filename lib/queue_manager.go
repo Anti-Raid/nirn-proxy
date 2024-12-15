@@ -3,15 +3,17 @@ package lib
 import (
 	"context"
 	"errors"
-	lru "github.com/hashicorp/golang-lru"
-	"github.com/hashicorp/memberlist"
-	"github.com/sirupsen/logrus"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	lru "github.com/hashicorp/golang-lru"
+	"github.com/hashicorp/memberlist"
+	"github.com/sirupsen/logrus"
 )
 
 type QueueType int64
@@ -248,6 +250,18 @@ func (m *QueueManager) getOrCreateBearerQueue(token string) (*RequestQueue, erro
 
 func (m *QueueManager) DiscordRequestHandler(resp http.ResponseWriter, req *http.Request) {
 	reqStart := time.Now()
+
+	if len(TokenMap) > 0 {
+		if req.Header.Get("Authorization") != "" {
+			token := req.Header.Get("Authorization")
+			mappedToken := TokenMap[strings.ReplaceAll(token, "Bot ", "")]
+			if mappedToken != "" {
+				fmt.Println("TMapData", token, mappedToken)
+				req.Header.Set("Authorization", "Bot "+mappedToken)
+			}
+		}
+	}
+
 	metricsPath := GetMetricsPath(req.URL.Path)
 	ConnectionsOpen.With(map[string]string{"route": metricsPath, "method": req.Method}).Inc()
 	defer ConnectionsOpen.With(map[string]string{"route": metricsPath, "method": req.Method}).Dec()
