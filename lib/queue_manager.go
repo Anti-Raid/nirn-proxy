@@ -3,7 +3,6 @@ package lib
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -256,7 +255,6 @@ func (m *QueueManager) DiscordRequestHandler(resp http.ResponseWriter, req *http
 			token := req.Header.Get("Authorization")
 			mappedToken := TokenMap[strings.ReplaceAll(token, "Bot ", "")]
 			if mappedToken != "" {
-				fmt.Println("TMapData", token, mappedToken)
 				req.Header.Set("Authorization", "Bot "+mappedToken)
 			}
 		}
