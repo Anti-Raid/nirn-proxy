@@ -392,9 +392,41 @@ func (m *QueueManager) HandleGlobal(w http.ResponseWriter, r *http.Request) {
 	logger.Trace("Returned OK for global request")
 }
 
+func banEndpoint(method string, apiPath string, m *QueueManager, mux *http.ServeMux) {
+	mux.HandleFunc(method+" /api/"+apiPath, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"message": "This action is not allowed", "code": 0}`))
+	})
+
+	mux.HandleFunc(method+" /api/{v}/"+apiPath, func(w http.ResponseWriter, r *http.Request) {
+		ver := r.PathValue("v")
+
+		if !strings.HasPrefix(ver, "v") {
+			m.DiscordRequestHandler(w, r)
+			return
+		}
+
+		w.WriteHeader(403)
+		w.Write([]byte(`{"message": "This action is not allowed", "code": 0}`))
+	})
+}
+
 func (m *QueueManager) CreateMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", m.DiscordRequestHandler)
+
+	// Create DM is not allowed
+	banEndpoint("POST", "users/@me/channels", m, mux)
+
+	// DELETE /guilds/{guild.id}
+	banEndpoint("DELETE", "guilds/{guild_id}", m, mux)
+
+	// POST /guilds/{guild.id}/bulk-ban (Bulk Ban)
+	banEndpoint("POST", "guilds/{guild_id}/bulk-ban", m, mux)
+
+	// DELETE /users/@me/guilds/{guild.id} (leave guild) is not allowed
+	banEndpoint("DELETE", "users/@me/guilds/{guild_id}", m, mux)
+
 	mux.HandleFunc("/nirn/global", m.HandleGlobal)
 	mux.HandleFunc("/nirn/healthz", func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(200)
