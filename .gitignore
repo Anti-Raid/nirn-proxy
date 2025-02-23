@@ -8,3 +8,4 @@ k6_tests/node_modules
 nirn-proxy
 token-map.json
 secrets.json
+secrets.docker.json
